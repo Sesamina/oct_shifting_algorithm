@@ -19,7 +19,7 @@
 #include "regression.h"
 #include "graphUtils/GraphUtils.h"
 
- //fixed number of OCT images
+//fixed number of OCT images
 #define NUM_FRAMES 128
  //scale of OCT cube
 #define SCALE_X 2.7
@@ -27,7 +27,6 @@
 #define SCALE_Z 3.0
 
 int global_video_ctr = 0;
-std::string video_path = "C:\\Users\\ramon\\Documents\\Uni\\Masterarbeit\\video\\";
 
 //-------------------------------------
 //helper method to generate a PointXYZ
@@ -41,7 +40,8 @@ void generatePoint(pcl::PointXYZ& point, float x, float y, float z, float width,
 //------------------------------------------------------------
 //convert labelled image (opencv matrix) to points for cloud
 //------------------------------------------------------------
-void MatToPointXYZ(cv::Mat& OpencVPointCloud, cv::Mat& labelInfo, std::vector<cv::Point>& elipsePoints, int z, pcl::PointCloud<pcl::PointXYZ>::Ptr& point_cloud_ptr, int height, int width)
+void MatToPointXYZ(cv::Mat& OpencVPointCloud, cv::Mat& labelInfo, std::vector<cv::Point>& elipsePoints, int z, 
+	pcl::PointCloud<pcl::PointXYZ>::Ptr& point_cloud_ptr, int height, int width)
 {
 	//get the infos for the bounding box
 	int x = labelInfo.at<int>(0, cv::CC_STAT_LEFT);
@@ -205,7 +205,8 @@ Eigen::Matrix4f buildTransformationMatrix(Eigen::Matrix3f rotation, Eigen::Vecto
 //-----------------------------
 // compute correspondences
 //-----------------------------
-float computeCorrespondences(Eigen::Matrix4f& guess, pcl::PointCloud<pcl::PointXYZ>::Ptr input, pcl::PointCloud<pcl::PointXYZ>::Ptr target, pcl::PointCloud<pcl::PointXYZ>::Ptr& corr_cloud, bool video) {
+float computeCorrespondences(Eigen::Matrix4f& guess, pcl::PointCloud<pcl::PointXYZ>::Ptr input, pcl::PointCloud<pcl::PointXYZ>::Ptr target, 
+	pcl::PointCloud<pcl::PointXYZ>::Ptr& corr_cloud, bool video) {
 	// Point cloud containing the correspondences of each point in <input, indices>
 	pcl::PointCloud<pcl::PointXYZ>::Ptr input_transformed(new pcl::PointCloud<pcl::PointXYZ>);
 
@@ -219,7 +220,8 @@ float computeCorrespondences(Eigen::Matrix4f& guess, pcl::PointCloud<pcl::PointX
 	else
 		*input_transformed = *input;
 
-	pcl::registration::CorrespondenceEstimation<pcl::PointXYZ, pcl::PointXYZ>::Ptr correspondence_estimation(new pcl::registration::CorrespondenceEstimation<pcl::PointXYZ, pcl::PointXYZ>);
+	pcl::registration::CorrespondenceEstimation<pcl::PointXYZ, pcl::PointXYZ>::Ptr correspondence_estimation(
+		new pcl::registration::CorrespondenceEstimation<pcl::PointXYZ, pcl::PointXYZ>);
 	// Pass in the default target for the Correspondence Estimation code
 	correspondence_estimation->setInputTarget(target);
 
@@ -259,7 +261,7 @@ void shift_and_roll_without_sum(float angle_min, float angle_max, float angle_st
 	pcl::PointCloud<pcl::PointXYZ>::Ptr model_voxelized, pcl::PointCloud<pcl::PointXYZ>::Ptr point_cloud_ptr,
 	pcl::PointCloud<pcl::PointXYZ>::Ptr& modelTransformed,
 	boost::shared_ptr<pcl::visualization::PCLVisualizer>& viewerForVideo,
-	pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> rgb_handler5, bool video) {
+	pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> rgb_handler5, bool video, std::string video_path) {
 	int num_angle_steps = std::round((angle_max - angle_min) / angle_step) + 1;
 	int num_shift_steps = std::round((shift_max - shift_min) / shift_step) + 1;
 	for (int i = 0; i < (num_angle_steps) * (num_shift_steps); i++) {
@@ -275,7 +277,8 @@ void shift_and_roll_without_sum(float angle_min, float angle_max, float angle_st
 			Eigen::Vector3f trans = shiftByValue((float)shift_min + shift * shift_step, initialTranslation, direction);
 			Eigen::Matrix4f transform = buildTransformationMatrix(rot, trans);
 			float correspondence_count = computeCorrespondences(transform, model_voxelized, point_cloud_ptr, corr_cloud, video);
-			count.at(angle * num_shift_steps + shift) = std::tuple<float, float, float>(angle_min + angle * angle_step, shift_min + shift * shift_step, correspondence_count);
+			count.at(angle * num_shift_steps + shift) = std::tuple<float, float, float>(angle_min + angle * angle_step, 
+				shift_min + shift * shift_step, correspondence_count);
 			//VIDEO
 			if (video) {
 				pcl::transformPointCloud(*model_voxelized, *modelTransformed, transform);
@@ -446,27 +449,48 @@ float getAngleFromMatrix(const Eigen::Matrix4f& transformation) {
 	return angle;
 }
 
-//bin/pcl_global_classification -models_dir /directory/of/cad/model/in/ply/format -training_dir /directory/where/trained/models/should/be/saved -nn 10 -oct_dir /directory/to/oct/frames -only_tip 1
+void printHelp()
+{
+	pcl::console::print_error("Syntax is: .\oct_shift -models_dir -oct_dir -only_tip -shift -video <-video_dir>\n");
+	pcl::console::print_info("  where arguments are:\n");
+	pcl::console::print_info("                     -models_dir = directory where CAD model in .ply format is located, \n");
+	pcl::console::print_info("                     -oct_dir = directory where OCT images are located, \n");
+	pcl::console::print_info("                     -only_tip = 0 if whole OCT cloud should be used, 1 if only tip should be used, \n");
+	pcl::console::print_info("                     -video = 1 if screenshots of algorithm for video should be taken, 0 if not, \n");
+	pcl::console::print_info("                     -video_dir = necessary if video is set to 1. \n");
+}
+
 
 int main(int argc, char ** argv)
 {
 	//------------------------------
 	//parse command line arguments
 	//------------------------------
+	if (argc < 9)
+	{
+		printHelp();
+		return (-1);
+	}
+
 	std::string path = "models/";
 	std::string oct_dir = "oct/";
+	std::string video_path = "video/";
 	//use only needle tip or not
 	bool only_tip = false;
-	//use shift algorithm or icp
-	bool shift = false;
 	//assemble screenshots for video
 	bool video = false;
 
 	pcl::console::parse_argument(argc, argv, "-models_dir", path);
 	pcl::console::parse_argument(argc, argv, "-oct_dir", oct_dir);
 	pcl::console::parse_argument(argc, argv, "-only_tip", only_tip);
-	pcl::console::parse_argument(argc, argv, "-shift", shift);
-	pcl::console::parse_argument(argc, argv, "-video", video);
+	if (pcl::console::parse_argument(argc, argv, "-video", video) == 1)
+	{
+		if (pcl::console::parse_argument(argc, argv, "-video_dir", video_path) == -1)
+		{
+			PCL_ERROR("Need an output directory for video! Please use -video_dir to continue.\n");
+			return (-1);
+		}
+	}
 
 
 	//-------------------------------------
@@ -482,232 +506,234 @@ int main(int argc, char ** argv)
 	//-------------------------------
 	//shifting algorithm
 	//-------------------------------
-	if (shift) {
 
 		//-------------------------------
 		//process the CAD mdoel
 		//-------------------------------
-		pcl::PointCloud<pcl::PointXYZ>::Ptr modelCloud(new pcl::PointCloud<pcl::PointXYZ>);
-		pcl::PointCloud<pcl::PointXYZ>::Ptr model_voxelized(new pcl::PointCloud<pcl::PointXYZ>());
-		generatePointCloudFromModel(modelCloud, model_voxelized, path);
-		//cut oct cloud
-		cutPartOfModel(point_cloud_not_cut, point_cloud_ptr, getModelSize(model_voxelized) - 0.1f + getMinZValue(point_cloud_not_cut));
+	pcl::PointCloud<pcl::PointXYZ>::Ptr modelCloud(new pcl::PointCloud<pcl::PointXYZ>);
+	pcl::PointCloud<pcl::PointXYZ>::Ptr model_voxelized(new pcl::PointCloud<pcl::PointXYZ>());
+	generatePointCloudFromModel(modelCloud, model_voxelized, path);
+	//cut oct cloud
+	cutPartOfModel(point_cloud_not_cut, point_cloud_ptr, getModelSize(model_voxelized) - 0.1f + getMinZValue(point_cloud_not_cut));
 
-		//--------------------------------------
-		//compute initial translation/rotation
-		//--------------------------------------
-		//compute the 3d direction of the needle
-		std::pair<Eigen::Vector3f, Eigen::Vector3f> direction = computeNeedleDirection(peak_points);
-		std::cout << "origin: " << std::endl << std::get<0>(direction) << std::endl << "direction: " << std::endl << std::get<1>(direction) << std::endl;
+	//--------------------------------------
+	//compute initial translation/rotation
+	//--------------------------------------
+	//compute the 3d direction of the needle
+	std::pair<Eigen::Vector3f, Eigen::Vector3f> direction = computeNeedleDirection(peak_points);
+	std::cout << "origin: " << std::endl << std::get<0>(direction) << std::endl << "direction: " << std::endl << std::get<1>(direction) << std::endl;
 
-		//compute the 3d rotation of the needle
-		Eigen::Matrix3f rotation = computeNeedleRotation(direction);
-		std::cout << "rotation matrix: " << std::endl << rotation << std::endl;
-		//rotate back to 0 degree on z axis
-		Eigen::Vector3f euler = rotation.eulerAngles(0, 1, 2) * 180 / M_PI;
-		rotation = rotateByAngle(180 - euler.z(), rotation);
-		std::cout << "euler angles: " << std::endl << rotation.eulerAngles(0, 1, 2) * 180 / M_PI << std::endl;
+	//compute the 3d rotation of the needle
+	Eigen::Matrix3f rotation = computeNeedleRotation(direction);
+	std::cout << "rotation matrix: " << std::endl << rotation << std::endl;
+	//rotate back to 0 degree on z axis
+	Eigen::Vector3f euler = rotation.eulerAngles(0, 1, 2) * 180 / M_PI;
+	rotation = rotateByAngle(180 - euler.z(), rotation);
+	std::cout << "euler angles: " << std::endl << rotation.eulerAngles(0, 1, 2) * 180 / M_PI << std::endl;
 
-		//compute 3d translation of the needle
-		float tangencyPoint = regression(needle_width) / (float)NUM_FRAMES * SCALE_Z; //scaling
-		std::cout << "tangency point: " << tangencyPoint << std::endl;
-		Eigen::Vector3f initialTranslation = computeNeedleTranslation(tangencyPoint, std::get<0>(direction), std::get<1>(direction), getModelSize(model_voxelized) / 2);
-		std::cout << "translation: " << std::endl << initialTranslation << std::endl;
+	//compute 3d translation of the needle
+	float tangencyPoint = regression(needle_width) / (float)NUM_FRAMES * SCALE_Z; //scaling
+	std::cout << "tangency point: " << tangencyPoint << std::endl;
+	Eigen::Vector3f initialTranslation = computeNeedleTranslation(tangencyPoint, std::get<0>(direction), 
+		std::get<1>(direction), getModelSize(model_voxelized) / 2);
+	std::cout << "translation: " << std::endl << initialTranslation << std::endl;
 
-		//build the transformation matrix with currently computed rotation and translation
-		Eigen::Matrix4f transformation = buildTransformationMatrix(rotation, initialTranslation);
+	//build the transformation matrix with currently computed rotation and translation
+	Eigen::Matrix4f transformation = buildTransformationMatrix(rotation, initialTranslation);
 
-		//transform point cloud to initial values
-		pcl::PointCloud<pcl::PointXYZ>::Ptr modelTransformed(new pcl::PointCloud<pcl::PointXYZ>);
-		pcl::transformPointCloud(*model_voxelized, *modelTransformed, transformation);
+	//transform point cloud to initial values
+	pcl::PointCloud<pcl::PointXYZ>::Ptr modelTransformed(new pcl::PointCloud<pcl::PointXYZ>);
+	pcl::transformPointCloud(*model_voxelized, *modelTransformed, transformation);
 
-		//VIDEO
-		boost::shared_ptr<pcl::visualization::PCLVisualizer> viewerForVideo(new pcl::visualization::PCLVisualizer("3D Viewer"));
-		pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> rgb_handler5(modelTransformed, 0, 255, 255);
-		if (video) {
-			viewerForVideo->setBackgroundColor(0, 0, 0);
-			pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> rgb_handler3(point_cloud_ptr, 0, 255, 0);
-			viewerForVideo->addPointCloud<pcl::PointXYZ>(point_cloud_ptr, rgb_handler3, "oct cloud");
-			viewerForVideo->addPointCloud<pcl::PointXYZ>(modelTransformed, rgb_handler5, "model transformed");
-			viewerForVideo->addCoordinateSystem(2.0);
-			viewerForVideo->initCameraParameters();
-			viewerForVideo->setCameraPosition(1.45732, 2.56393, -1.49624, -0.127368, 0.760336, 0.63692);
-			viewerForVideo->spinOnce();
-			std::stringstream fileName;
-			fileName << video_path << global_video_ctr++ << ".png";
-			viewerForVideo->saveScreenshot(fileName.str());
-		}
-
-		//----------------------
-		//tip approximation
-		//----------------------
-		transformation = tipApproximation(point_cloud_ptr, modelTransformed, model_voxelized, direction, transformation);
-		float end_angle = getAngleFromMatrix(transformation);
-
-		//VIDEO
-		if (video) {
-			viewerForVideo->updatePointCloud(modelTransformed, rgb_handler5, "model transformed");
-			viewerForVideo->spinOnce();
-			std::stringstream filename;
-			filename << video_path << global_video_ctr++ << ".png";
-			viewerForVideo->saveScreenshot(filename.str());
-		}
-
-		//--------------------------------------
-		//start of shifting algorithm
-		//--------------------------------------
-		//angle, shift, count in one vector
-		std::vector<std::tuple<float, float, float>> correspondence_count;
-		//angle and count
-		std::vector<std::pair<float, float>> angle_count;
-		//shift and count
-		std::vector<std::pair<float, float>> shift_count;
-
-		//initialize interval values
-		float angleStart = end_angle - 5.0f;
-		float angleEnd = end_angle + 5.0f;
-		float angleStep = 1.0f;
-		float shiftStart = 0.0f;
-		float shiftEnd = 0.5;
-		float shiftStep = 0.05f;
-		//more initialization
-		int max_index_angles = 0;
-		int max_index_shift = 0;
-		int correspondence_index = 0;
-		float max_angle = 0.0f;
-		float max_shift = 0.0f;
-
-		{
-			pcl::ScopeTime t("Shift and Roll");
-			for (int i = 0; i < 4; i++) {
-				angle_count.clear();
-				shift_count.clear();
-				correspondence_count.clear();
-				//apply shift and roll in small steps in given intervals and compute correspondences
-				shift_and_roll_without_sum(angleStart, angleEnd, angleStep, shiftStart, shiftEnd, shiftStep, correspondence_count, rotation, initialTranslation, std::get<1>(direction), model_voxelized, point_cloud_ptr, modelTransformed, viewerForVideo, rgb_handler5, video);
-
-				//fill count correspondences for all angles and all shifts					
-				for (int i = 0; i < correspondence_count.size(); i++) {
-					std::tuple<float, float, float> current = correspondence_count.at(i);
-					float angle_tmp = std::get<0>(current);
-					float shift_tmp = std::get<1>(current);
-					float count_tmp = std::get<2>(current);
-					std::vector<std::pair<float, float>>::iterator it;
-					it = std::find_if(angle_count.begin(), angle_count.end(), [angle_tmp](const std::pair<float, float>& p1) {
-						return p1.first == angle_tmp; });
-					if (it != angle_count.end()) {
-						angle_count.at(std::distance(angle_count.begin(), it)).second += count_tmp;
-					}
-					else {
-						angle_count.push_back(std::pair<float, float>(angle_tmp, count_tmp));
-					}
-					it = std::find_if(shift_count.begin(), shift_count.end(), [shift_tmp](const std::pair<float, float>& p1) {
-						return p1.first == shift_tmp; });
-					if (it != shift_count.end()) {
-						shift_count.at(std::distance(shift_count.begin(), it)).second += count_tmp;
-					}
-					else {
-						shift_count.push_back(std::pair<float, float>(shift_tmp, count_tmp));
-					}
-				}
-
-				//find index of maximum correspondences
-				max_index_angles = findMaxIndexOfVectorOfPairs(angle_count);
-				max_index_shift = findMaxIndexOfVectorOfPairs(shift_count);
-				correspondence_index = findMaxIndexOfVectorOfTuples(correspondence_count);
-				max_angle = std::get<0>(angle_count.at(max_index_angles));
-				max_shift = std::get<0>(shift_count.at(max_index_shift));
-
-				//check bounds of vectors to make sure that in both directions of max indices you can go as far as specified
-				angleStart = checkMinBoundsForValue(max_angle, angleStart, angleStep);
-				angleEnd = checkMaxBoundsForValue(max_angle, angleEnd, angleStep);
-				shiftStart = checkMinBoundsForValue(max_shift, shiftStart, shiftStep);
-				shiftEnd = checkMaxBoundsForValue(max_shift, shiftEnd, shiftStep);
-
-				//assign new interval values
-				angleStep /= 5.0f;
-				shiftStep /= 5.0f;
-				std::cout << "angle: " << max_angle * -1 << std::endl;
-				std::cout << "shift: " << max_shift << std::endl;
-				std::cout << "end of round: " << i << std::endl;
-
-				//show correspondence count as graph
-				/*std::vector<float> angle_corr;
-				for (int j = 0; j < angle_count.size(); j++) {
-					angle_corr.push_back(angle_count.at(j).second);
-				}
-				showFloatGraph("Angle Correspondences", &angle_corr[0], angle_corr.size(), 0);
-				std::vector<float> shift_corr;
-				for (int j = 0; j < shift_count.size(); j++) {
-					shift_corr.push_back(shift_count.at(j).second);
-				}
-				showFloatGraph("Shift Correspondences", &shift_corr[0], shift_corr.size(), 0);*/
-
-				//debugging
-				/*for (int i = 0; i < shift_count.size(); i++) {
-					std::cout << shift_count.at(i).first << " : " << shift_count.at(i).second << std::endl;
-				}*/
-				/*for (int i = 0; i < correspondence_count.size(); i++) {
-					std::cout << std::get<0>(correspondence_count.at(i)) << " : " << std::get<1>(correspondence_count.at(i)) << " : " << std::get<2>(correspondence_count.at(i)) << std::endl;
-				}*/
-			}
-		}
-
-		transformation = buildTransformationMatrix(rotateByAngle(max_angle, rotation), shiftByValue(max_shift, initialTranslation, std::get<1>(direction)));
-		pcl::transformPointCloud(*model_voxelized, *modelTransformed, transformation);
-
-		//VIDEO
-		if (video) {
-			viewerForVideo->updatePointCloud(modelTransformed, rgb_handler5, "model transformed");
-			viewerForVideo->spinOnce();
-		}
-
-		//------------------------------------------------------
-		// tip approximation
-		//------------------------------------------------------
-		transformation = tipApproximation(point_cloud_ptr, modelTransformed, model_voxelized, direction, transformation);
-		end_angle = getAngleFromMatrix(transformation);
-
-		//VIDEO
-		if (video) {
-			viewerForVideo->updatePointCloud(modelTransformed, rgb_handler5, "model transformed");
-			viewerForVideo->spinOnce();
-			std::stringstream file_name;
-			file_name << video_path << global_video_ctr++ << ".png";
-			viewerForVideo->saveScreenshot(file_name.str());
-			viewerForVideo->spin();
-		}
-
-		//get final position
-		Eigen::Vector4f centroid_transformed;
-		pcl::compute3DCentroid(*modelTransformed, centroid_transformed);
-		std::cout << "position: " << centroid_transformed;
-
-		//--------------------------------
-		//visualization
-		//--------------------------------
-		pcl::PointXYZ point2;
-		point2.x = std::get<0>(direction).x() + 2 * std::get<1>(direction).x();
-		point2.y = std::get<0>(direction).y() + 2 * std::get<1>(direction).y();
-		point2.z = std::get<0>(direction).z() + 2 * std::get<1>(direction).z();
-		pcl::PointXYZ point3;
-		point3.x = std::get<0>(direction).x() - 2 * std::get<1>(direction).x();
-		point3.y = std::get<0>(direction).y() - 2 * std::get<1>(direction).y();
-		point3.z = std::get<0>(direction).z() - 2 * std::get<1>(direction).z();
-		//show model
-		boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
-		viewer->setBackgroundColor(0, 0, 0);
-		pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> rgb_handler(model_voxelized, 0, 0, 255);
-		viewer->addPointCloud<pcl::PointXYZ>(model_voxelized, rgb_handler, "model");
-		pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> rgb_handler6(point_cloud_ptr, 0, 255, 0);
-		viewer->addPointCloud<pcl::PointXYZ>(point_cloud_ptr, rgb_handler6, "oct cloud");
-		pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> rgb_handler4(peak_points, 255, 10, 10);
-		viewer->addPointCloud<pcl::PointXYZ>(peak_points, rgb_handler4, "peak points");
-		pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> rgb_handler7(modelTransformed, 0, 255, 255);
-		viewer->addPointCloud<pcl::PointXYZ>(modelTransformed, rgb_handler7, "model transformed");
-		viewer->addLine(point2, point3, "line");
-		viewer->addCoordinateSystem(2.0);
-		viewer->initCameraParameters();
-		viewer->spin();
+	//VIDEO
+	boost::shared_ptr<pcl::visualization::PCLVisualizer> viewerForVideo(new pcl::visualization::PCLVisualizer("3D Viewer"));
+	pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> rgb_handler5(modelTransformed, 0, 255, 255);
+	if (video) {
+		viewerForVideo->setBackgroundColor(0, 0, 0);
+		pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> rgb_handler3(point_cloud_ptr, 0, 255, 0);
+		viewerForVideo->addPointCloud<pcl::PointXYZ>(point_cloud_ptr, rgb_handler3, "oct cloud");
+		viewerForVideo->addPointCloud<pcl::PointXYZ>(modelTransformed, rgb_handler5, "model transformed");
+		viewerForVideo->addCoordinateSystem(2.0);
+		viewerForVideo->initCameraParameters();
+		viewerForVideo->setCameraPosition(1.45732, 2.56393, -1.49624, -0.127368, 0.760336, 0.63692);
+		viewerForVideo->spinOnce();
+		std::stringstream fileName;
+		fileName << video_path << global_video_ctr++ << ".png";
+		viewerForVideo->saveScreenshot(fileName.str());
 	}
+
+	//----------------------
+	//tip approximation
+	//----------------------
+	transformation = tipApproximation(point_cloud_ptr, modelTransformed, model_voxelized, direction, transformation);
+	float end_angle = getAngleFromMatrix(transformation);
+
+	//VIDEO
+	if (video) {
+		viewerForVideo->updatePointCloud(modelTransformed, rgb_handler5, "model transformed");
+		viewerForVideo->spinOnce();
+		std::stringstream filename;
+		filename << video_path << global_video_ctr++ << ".png";
+		viewerForVideo->saveScreenshot(filename.str());
+	}
+
+	//--------------------------------------
+	//start of shifting algorithm
+	//--------------------------------------
+	//angle, shift, count in one vector
+	std::vector<std::tuple<float, float, float>> correspondence_count;
+	//angle and count
+	std::vector<std::pair<float, float>> angle_count;
+	//shift and count
+	std::vector<std::pair<float, float>> shift_count;
+
+	//initialize interval values
+	float angleStart = end_angle - 5.0f;
+	float angleEnd = end_angle + 5.0f;
+	float angleStep = 1.0f;
+	float shiftStart = 0.0f;
+	float shiftEnd = 0.5;
+	float shiftStep = 0.05f;
+	//more initialization
+	int max_index_angles = 0;
+	int max_index_shift = 0;
+	int correspondence_index = 0;
+	float max_angle = 0.0f;
+	float max_shift = 0.0f;
+
+	{
+		pcl::ScopeTime t("Shift and Roll");
+		for (int i = 0; i < 4; i++) {
+			angle_count.clear();
+			shift_count.clear();
+			correspondence_count.clear();
+			//apply shift and roll in small steps in given intervals and compute correspondences
+			shift_and_roll_without_sum(angleStart, angleEnd, angleStep, shiftStart, shiftEnd, shiftStep, correspondence_count, rotation, initialTranslation, 
+				std::get<1>(direction), model_voxelized, point_cloud_ptr, modelTransformed, viewerForVideo, rgb_handler5, video, video_path);
+
+			//fill count correspondences for all angles and all shifts					
+			for (int i = 0; i < correspondence_count.size(); i++) {
+				std::tuple<float, float, float> current = correspondence_count.at(i);
+				float angle_tmp = std::get<0>(current);
+				float shift_tmp = std::get<1>(current);
+				float count_tmp = std::get<2>(current);
+				std::vector<std::pair<float, float>>::iterator it;
+				it = std::find_if(angle_count.begin(), angle_count.end(), [angle_tmp](const std::pair<float, float>& p1) {
+					return p1.first == angle_tmp; });
+				if (it != angle_count.end()) {
+					angle_count.at(std::distance(angle_count.begin(), it)).second += count_tmp;
+				}
+				else {
+					angle_count.push_back(std::pair<float, float>(angle_tmp, count_tmp));
+				}
+				it = std::find_if(shift_count.begin(), shift_count.end(), [shift_tmp](const std::pair<float, float>& p1) {
+					return p1.first == shift_tmp; });
+				if (it != shift_count.end()) {
+					shift_count.at(std::distance(shift_count.begin(), it)).second += count_tmp;
+				}
+				else {
+					shift_count.push_back(std::pair<float, float>(shift_tmp, count_tmp));
+				}
+			}
+
+			//find index of maximum correspondences
+			max_index_angles = findMaxIndexOfVectorOfPairs(angle_count);
+			max_index_shift = findMaxIndexOfVectorOfPairs(shift_count);
+			correspondence_index = findMaxIndexOfVectorOfTuples(correspondence_count);
+			max_angle = std::get<0>(angle_count.at(max_index_angles));
+			max_shift = std::get<0>(shift_count.at(max_index_shift));
+
+			//check bounds of vectors to make sure that in both directions of max indices you can go as far as specified
+			angleStart = checkMinBoundsForValue(max_angle, angleStart, angleStep);
+			angleEnd = checkMaxBoundsForValue(max_angle, angleEnd, angleStep);
+			shiftStart = checkMinBoundsForValue(max_shift, shiftStart, shiftStep);
+			shiftEnd = checkMaxBoundsForValue(max_shift, shiftEnd, shiftStep);
+
+			//assign new interval values
+			angleStep /= 5.0f;
+			shiftStep /= 5.0f;
+			std::cout << "angle: " << max_angle * -1 << std::endl;
+			std::cout << "shift: " << max_shift << std::endl;
+			std::cout << "end of round: " << i << std::endl;
+
+			//show correspondence count as graph
+			/*std::vector<float> angle_corr;
+			for (int j = 0; j < angle_count.size(); j++) {
+				angle_corr.push_back(angle_count.at(j).second);
+			}
+			showFloatGraph("Angle Correspondences", &angle_corr[0], angle_corr.size(), 0);
+			std::vector<float> shift_corr;
+			for (int j = 0; j < shift_count.size(); j++) {
+				shift_corr.push_back(shift_count.at(j).second);
+			}
+			showFloatGraph("Shift Correspondences", &shift_corr[0], shift_corr.size(), 0);*/
+
+			//debugging
+			/*for (int i = 0; i < shift_count.size(); i++) {
+				std::cout << shift_count.at(i).first << " : " << shift_count.at(i).second << std::endl;
+			}*/
+			/*for (int i = 0; i < correspondence_count.size(); i++) {
+				std::cout << std::get<0>(correspondence_count.at(i)) << " : " << std::get<1>(correspondence_count.at(i)) << " : " 
+				<< std::get<2>(correspondence_count.at(i)) << std::endl;
+			}*/
+		}
+	}
+
+	transformation = buildTransformationMatrix(rotateByAngle(max_angle, rotation), shiftByValue(max_shift, initialTranslation, std::get<1>(direction)));
+	pcl::transformPointCloud(*model_voxelized, *modelTransformed, transformation);
+
+	//VIDEO
+	if (video) {
+		viewerForVideo->updatePointCloud(modelTransformed, rgb_handler5, "model transformed");
+		viewerForVideo->spinOnce();
+	}
+
+	//------------------------------------------------------
+	// tip approximation
+	//------------------------------------------------------
+	transformation = tipApproximation(point_cloud_ptr, modelTransformed, model_voxelized, direction, transformation);
+	end_angle = getAngleFromMatrix(transformation);
+
+	//VIDEO
+	if (video) {
+		viewerForVideo->updatePointCloud(modelTransformed, rgb_handler5, "model transformed");
+		viewerForVideo->spinOnce();
+		std::stringstream file_name;
+		file_name << video_path << global_video_ctr++ << ".png";
+		viewerForVideo->saveScreenshot(file_name.str());
+		viewerForVideo->spin();
+	}
+
+	//get final position
+	Eigen::Vector4f centroid_transformed;
+	pcl::compute3DCentroid(*modelTransformed, centroid_transformed);
+	std::cout << "position: " << centroid_transformed;
+
+	//--------------------------------
+	//visualization
+	//--------------------------------
+	pcl::PointXYZ point2;
+	point2.x = std::get<0>(direction).x() + 2 * std::get<1>(direction).x();
+	point2.y = std::get<0>(direction).y() + 2 * std::get<1>(direction).y();
+	point2.z = std::get<0>(direction).z() + 2 * std::get<1>(direction).z();
+	pcl::PointXYZ point3;
+	point3.x = std::get<0>(direction).x() - 2 * std::get<1>(direction).x();
+	point3.y = std::get<0>(direction).y() - 2 * std::get<1>(direction).y();
+	point3.z = std::get<0>(direction).z() - 2 * std::get<1>(direction).z();
+	//show model
+	boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
+	viewer->setBackgroundColor(0, 0, 0);
+	pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> rgb_handler(model_voxelized, 0, 0, 255);
+	viewer->addPointCloud<pcl::PointXYZ>(model_voxelized, rgb_handler, "model");
+	pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> rgb_handler6(point_cloud_ptr, 0, 255, 0);
+	viewer->addPointCloud<pcl::PointXYZ>(point_cloud_ptr, rgb_handler6, "oct cloud");
+	pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> rgb_handler4(peak_points, 255, 10, 10);
+	viewer->addPointCloud<pcl::PointXYZ>(peak_points, rgb_handler4, "peak points");
+	pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> rgb_handler7(modelTransformed, 0, 255, 255);
+	viewer->addPointCloud<pcl::PointXYZ>(modelTransformed, rgb_handler7, "model transformed");
+	viewer->addLine(point2, point3, "line");
+	viewer->addCoordinateSystem(2.0);
+	viewer->initCameraParameters();
+	viewer->spin();
 }
+
