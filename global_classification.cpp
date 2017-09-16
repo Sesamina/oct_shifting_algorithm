@@ -68,7 +68,7 @@ float computeCorrespondences(Eigen::Matrix4f& guess, pcl::PointCloud<pcl::PointX
 	correspondence_estimation->setInputSource(input_transformed);
 	boost::shared_ptr<pcl::Correspondences> correspondences(new pcl::Correspondences);
 
-	// Estimate correspondences ---------- maxDistance: VoxelSize * 2
+	// Estimate correspondences
 	correspondence_estimation->determineCorrespondences(*correspondences, 0.02f);
 	boost::shared_ptr<pcl::Correspondences> temp_correspondences(new pcl::Correspondences(*correspondences));
 	/*pcl::registration::CorrespondenceRejectorMedianDistance::Ptr rejector_median(new pcl::registration::CorrespondenceRejectorMedianDistance);
@@ -137,7 +137,7 @@ void shift_and_roll_without_sum(float angle_min, float angle_max, float angle_st
 }
 
 float computeTipX(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, std::pair<Eigen::Vector3f, Eigen::Vector3f> origin_and_direction_needle, float x_middle_OCT) {
-	pcl::PointXYZ min(0.0f, 0.0f, 2.0f);
+	pcl::PointXYZ min(0.0f, 0.0f, 5.0f);
 	for (int i = 0; i < cloud->points.size(); i++) {
 		pcl::PointXYZ point = cloud->at(i);
 		if (point.z < min.z) {
@@ -145,7 +145,7 @@ float computeTipX(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, std::pair<Eigen::Ve
 		}
 	}
 	Eigen::VectorXf line1(6);
-	line1 << x_middle_OCT, 0.0f, 0.0f, std::get<1>(origin_and_direction_needle)(0), 0.0f, std::get<1>(origin_and_direction_needle)(2);
+	line1 << x_middle_OCT, 0.0f, getMinZValue(cloud), std::get<1>(origin_and_direction_needle)(0), 0.0f, std::get<1>(origin_and_direction_needle)(2);
 	Eigen::VectorXf line2(6);
 	line2 << min.x, 0.0f, min.z, std::get<1>(origin_and_direction_needle)(2), 0.0f, -std::get<1>(origin_and_direction_needle)(0);
 	Eigen::Vector4f point;
@@ -159,7 +159,7 @@ float computeTipX(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, std::pair<Eigen::Ve
 Eigen::Matrix4f tipApproximation(pcl::PointCloud<pcl::PointXYZ>::Ptr point_cloud_ptr, pcl::PointCloud<pcl::PointXYZ>::Ptr& modelTransformed,
 	pcl::PointCloud<pcl::PointXYZ>::Ptr model_voxelized, std::pair<Eigen::Vector3f, Eigen::Vector3f> direction, const Eigen::Matrix4f& transformation) {
 	Eigen::Matrix4f transform = transformation;
-	float x_middle_OCT = computeMiddle(point_cloud_ptr, 0.0f);
+	float x_middle_OCT = computeMiddle(point_cloud_ptr, getMinZValue(point_cloud_ptr));
 
 	float z_min = getMinZValue(modelTransformed);
 	float x_middle_model = computeMiddle(modelTransformed, z_min);
@@ -275,9 +275,9 @@ int main(int argc, char ** argv)
 	//shifting algorithm
 	//-------------------------------
 
-		//-------------------------------
-		//process the CAD mdoel
-		//-------------------------------
+	//-------------------------------
+	//process the CAD mdoel
+	//-------------------------------
 	pcl::PointCloud<pcl::PointXYZ>::Ptr modelCloud(new pcl::PointCloud<pcl::PointXYZ>);
 	pcl::PointCloud<pcl::PointXYZ>::Ptr model_voxelized(new pcl::PointCloud<pcl::PointXYZ>());
 	generatePointCloudFromModel(modelCloud, model_voxelized, path);
@@ -488,6 +488,9 @@ int main(int argc, char ** argv)
 	point3.x = std::get<0>(direction).x() - 2 * std::get<1>(direction).x();
 	point3.y = std::get<0>(direction).y() - 2 * std::get<1>(direction).y();
 	point3.z = std::get<0>(direction).z() - 2 * std::get<1>(direction).z();
+	pcl::PointCloud<pcl::PointXYZ>::Ptr debug(new pcl::PointCloud<pcl::PointXYZ>);
+	debug->push_back(pcl::PointXYZ(computeMiddle(point_cloud_ptr, getMinZValue(point_cloud_ptr)), getMinPoint(point_cloud_ptr).y, getMinZValue(point_cloud_ptr)));
+	debug->push_back(pcl::PointXYZ());
 	//show model
 	boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
 	viewer->setBackgroundColor(0, 0, 0);
@@ -497,6 +500,9 @@ int main(int argc, char ** argv)
 	viewer->addPointCloud<pcl::PointXYZ>(point_cloud_ptr, rgb_handler6, "oct cloud");
 	pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> rgb_handler4(peak_points, 255, 10, 10);
 	viewer->addPointCloud<pcl::PointXYZ>(peak_points, rgb_handler4, "peak points");
+
+	pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> rgb_handlert(debug, 255, 10, 10);
+	viewer->addPointCloud<pcl::PointXYZ>(debug, rgb_handlert, "debug");
 	pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> rgb_handler7(modelTransformed, 0, 255, 255);
 	viewer->addPointCloud<pcl::PointXYZ>(modelTransformed, rgb_handler7, "model transformed");
 	viewer->addLine(point2, point3, "line");
