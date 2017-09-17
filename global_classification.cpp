@@ -251,9 +251,11 @@ int main(int argc, char ** argv)
 	pcl::console::parse_argument(argc, argv, "-models_dir", path);
 	pcl::console::parse_argument(argc, argv, "-oct_dir", oct_dir);
 	pcl::console::parse_argument(argc, argv, "-only_tip", only_tip);
-	if (pcl::console::parse_argument(argc, argv, "-video", video) == 1)
+	pcl::console::parse_argument(argc, argv, "-video", video);
+	if(video)
 	{
-		if (pcl::console::parse_argument(argc, argv, "-video_dir", video_path) == -1)
+		pcl::console::parse_argument(argc, argv, "-video_dir", video_path);
+		if(video_path.empty())
 		{
 			PCL_ERROR("Need an output directory for video! Please use -video_dir to continue.\n");
 			return (-1);
