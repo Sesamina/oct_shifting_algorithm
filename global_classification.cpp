@@ -136,16 +136,13 @@ void shift_and_roll_without_sum(float angle_min, float angle_max, float angle_st
 	}
 }
 
-float computeTipX(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, std::pair<Eigen::Vector3f, Eigen::Vector3f> origin_and_direction_needle, float x_middle_OCT) {
-	pcl::PointXYZ min(0.0f, 0.0f, 5.0f);
-	for (int i = 0; i < cloud->points.size(); i++) {
-		pcl::PointXYZ point = cloud->at(i);
-		if (point.z < min.z) {
-			min = point;
-		}
-	}
+//--------------------------------------------------------------------
+//compute approximated x-position of needle tip by crossing two lines
+//--------------------------------------------------------------------
+float computeTipX(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, std::pair<Eigen::Vector3f, Eigen::Vector3f> origin_and_direction_needle, float x_middle_OCT, float z_min_OCT) {
+	pcl::PointXYZ min = getMinPoint(cloud);
 	Eigen::VectorXf line1(6);
-	line1 << x_middle_OCT, 0.0f, getMinZValue(cloud), std::get<1>(origin_and_direction_needle)(0), 0.0f, std::get<1>(origin_and_direction_needle)(2);
+	line1 << x_middle_OCT, 0.0f, z_min_OCT, std::get<1>(origin_and_direction_needle)(0), 0.0f, std::get<1>(origin_and_direction_needle)(2);
 	Eigen::VectorXf line2(6);
 	line2 << min.x, 0.0f, min.z, std::get<1>(origin_and_direction_needle)(2), 0.0f, -std::get<1>(origin_and_direction_needle)(0);
 	Eigen::Vector4f point;
@@ -159,17 +156,22 @@ float computeTipX(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, std::pair<Eigen::Ve
 Eigen::Matrix4f tipApproximation(pcl::PointCloud<pcl::PointXYZ>::Ptr point_cloud_ptr, pcl::PointCloud<pcl::PointXYZ>::Ptr& modelTransformed,
 	pcl::PointCloud<pcl::PointXYZ>::Ptr model_voxelized, std::pair<Eigen::Vector3f, Eigen::Vector3f> direction, const Eigen::Matrix4f& transformation) {
 	Eigen::Matrix4f transform = transformation;
-	float x_middle_OCT = computeMiddle(point_cloud_ptr, getMinZValue(point_cloud_ptr));
+	//compute middle of OCT
+	float z_min_OCT = getMinZValue(point_cloud_ptr);
+	float x_middle_OCT = computeMiddle(point_cloud_ptr, z_min_OCT);
 
-	float z_min = getMinZValue(modelTransformed);
-	float x_middle_model = computeMiddle(modelTransformed, z_min);
+	//compute middle of CAD model
+	float z_min_model = getMinZValue(modelTransformed);
+	float x_middle_model = computeMiddle(modelTransformed, z_min_model);
 
 	Eigen::Vector3f OCT_point(x_middle_OCT, 0.0f, 0.0f);
-	float x_in_direction = computeTipX(modelTransformed, direction, x_middle_OCT);
+	//compute x-value which is the approximated tip
+	float x_in_direction = computeTipX(modelTransformed, direction, x_middle_OCT, z_min_OCT);
 
 
 	float angle_to_rotate = 0.5f;
 	float sign = 1.0f;
+	//rotate model until computed x-value is reached
 	{
 		pcl::ScopeTime t("Tip Approximation");
 		float first = 0.0f;
@@ -200,23 +202,9 @@ Eigen::Matrix4f tipApproximation(pcl::PointCloud<pcl::PointXYZ>::Ptr point_cloud
 	return transform;
 }
 
-float getAngleFromMatrix(const Eigen::Matrix4f& transformation) {
-	float angle = 0.0f;
-	Eigen::Matrix3f end_rot = transformation.block(0, 0, 3, 3);
-	Eigen::Vector3f eulerAngles = end_rot.eulerAngles(0, 1, 2);
-	eulerAngles *= 180 / M_PI;
-	std::cout << eulerAngles << std::endl;
-	if (eulerAngles.z() < 0) {
-		angle = -180 - eulerAngles.z();
-	}
-	else {
-		angle = 180 - eulerAngles.z();
-	}
-	std::cout << "angle: " << angle << std::endl;
-	angle *= -1.0f;
-	return angle;
-}
-
+//--------------------------------------
+//show needed parameters on console
+//--------------------------------------
 void printHelp()
 {
 	pcl::console::print_error("Syntax is: .\oct_shift -models_dir -oct_dir -only_tip -shift -video <-video_dir>\n");
@@ -272,10 +260,6 @@ int main(int argc, char ** argv)
 	boost::shared_ptr<std::vector<std::tuple<int, int, cv::Mat, cv::Mat>>> needle_width = recognizeOCT(point_cloud_not_cut, peak_points, oct_dir, only_tip);
 	//cutPartOfModel(point_cloud_not_cut, point_cloud_ptr, 1.3f);
 	//cutModelinHalf(point_cloud_not_cut, point_cloud_ptr, 2);
-
-	//-------------------------------
-	//shifting algorithm
-	//-------------------------------
 
 	//-------------------------------
 	//process the CAD mdoel
@@ -381,7 +365,7 @@ int main(int argc, char ** argv)
 			shift_and_roll_without_sum(angleStart, angleEnd, angleStep, shiftStart, shiftEnd, shiftStep, correspondence_count, rotation, initialTranslation, 
 				std::get<1>(direction), model_voxelized, point_cloud_ptr, modelTransformed, viewerForVideo, rgb_handler5, video, video_path);
 
-			//fill count correspondences for all angles and all shifts					
+			//sum up correspondences for all angles and all shifts					
 			for (int i = 0; i < correspondence_count.size(); i++) {
 				std::tuple<float, float, float> current = correspondence_count.at(i);
 				float angle_tmp = std::get<0>(current);
@@ -440,15 +424,20 @@ int main(int argc, char ** argv)
 
 			//debugging
 			/*for (int i = 0; i < shift_count.size(); i++) {
-				std::cout << shift_count.at(i).first << " : " << shift_count.at(i).second << std::endl;
-			}*/
+				std::cout << shift_count.at(i).second << " ";
+			}
+			std::cout << std::endl;
+			for (int i = 0; i < angle_count.size(); i++) {
+				std::cout << angle_count.at(i).second << " ";
+			}
+			std::cout << std::endl;*/
 			/*for (int i = 0; i < correspondence_count.size(); i++) {
 				std::cout << std::get<0>(correspondence_count.at(i)) << " : " << std::get<1>(correspondence_count.at(i)) << " : " 
 				<< std::get<2>(correspondence_count.at(i)) << std::endl;
 			}*/
 		}
 	}
-
+	//transform model
 	transformation = buildTransformationMatrix(rotateByAngle(max_angle, rotation), shiftByValue(max_shift, initialTranslation, std::get<1>(direction)));
 	pcl::transformPointCloud(*model_voxelized, *modelTransformed, transformation);
 
@@ -474,7 +463,9 @@ int main(int argc, char ** argv)
 		viewerForVideo->spin();
 	}
 
+	//--------------------
 	//get final position
+	//--------------------
 	Eigen::Vector4f centroid_transformed;
 	pcl::compute3DCentroid(*modelTransformed, centroid_transformed);
 	std::cout << "position: " << centroid_transformed;
@@ -502,7 +493,6 @@ int main(int argc, char ** argv)
 	viewer->addPointCloud<pcl::PointXYZ>(point_cloud_ptr, rgb_handler6, "oct cloud");
 	pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> rgb_handler4(peak_points, 255, 10, 10);
 	viewer->addPointCloud<pcl::PointXYZ>(peak_points, rgb_handler4, "peak points");
-
 	pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> rgb_handlert(debug, 255, 10, 10);
 	viewer->addPointCloud<pcl::PointXYZ>(debug, rgb_handlert, "debug");
 	pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> rgb_handler7(modelTransformed, 0, 255, 255);

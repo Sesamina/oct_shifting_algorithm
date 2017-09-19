@@ -66,3 +66,23 @@ Eigen::Matrix4f buildTransformationMatrix(Eigen::Matrix3f rotation, Eigen::Vecto
 	transformation.row(3) << 0, 0, 0, 1;
 	return transformation;
 }
+
+//--------------------------------------------
+//get z-rotation from transformation matrix
+//--------------------------------------------
+float getAngleFromMatrix(const Eigen::Matrix4f& transformation) {
+	float angle = 0.0f;
+	Eigen::Matrix3f end_rot = transformation.block(0, 0, 3, 3);
+	Eigen::Vector3f eulerAngles = end_rot.eulerAngles(0, 1, 2);
+	eulerAngles *= 180 / M_PI;
+	std::cout << eulerAngles << std::endl;
+	if (eulerAngles.z() < 0) {
+		angle = -180 - eulerAngles.z();
+	}
+	else {
+		angle = 180 - eulerAngles.z();
+	}
+	std::cout << "angle: " << angle << std::endl;
+	angle *= -1.0f;
+	return angle;
+}

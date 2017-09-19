@@ -101,7 +101,7 @@ void generatePointCloudFromModel(pcl::PointCloud<pcl::PointXYZ>::Ptr& modelCloud
 	pcl::transformPointCloud(*model_voxelized, *model_voxelized, rotationZ);
 }
 
-//cut the model in half in given direction
+//cut the model in half in given direction, 0 for x-axis, 1 for y-axis, 2 for z-axis
 void cutModelinHalf(pcl::PointCloud<pcl::PointXYZ>::Ptr& modelCloud, pcl::PointCloud<pcl::PointXYZ>::Ptr& result, int axis) {
 	Eigen::Vector4f centroid;
 	pcl::compute3DCentroid(*modelCloud, centroid);
@@ -125,7 +125,7 @@ void cutModelinHalf(pcl::PointCloud<pcl::PointXYZ>::Ptr& modelCloud, pcl::PointC
 	}
 }
 
-//cut a part of the model off, size specified by the missing_frames number
+//cut a part of the back of the model off, until specified value, keep only part before the value
 void cutPartOfModel(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr& cut, float to_cut_until) {
 	for (int i = 0; i < cloud->points.size(); i++) {
 		if (cloud->points.at(i).z < to_cut_until) {
@@ -210,6 +210,7 @@ float checkMaxBoundsForValue(float value, float end, float step) {
 	return end;
 }
 
+//compute middle of points at a specified z-value
 float computeMiddle(pcl::PointCloud<pcl::PointXYZ>::Ptr point_cloud_ptr, float z) {
 	float x_min = 2.0f;
 	float x_max = -2.0f;
@@ -232,6 +233,7 @@ float computeMiddle(pcl::PointCloud<pcl::PointXYZ>::Ptr point_cloud_ptr, float z
 	}
 }
 
+//compute minimum z-value of cloud
 float getMinZValue(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
 	float z = 2.0f;
 	for (int i = 0; i < cloud->points.size(); i++) {
@@ -243,8 +245,9 @@ float getMinZValue(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
 	return z;
 }
 
+//compute minimum point of cloud
 pcl::PointXYZ getMinPoint(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
-	pcl::PointXYZ z(0.0f, 0.0f, 2.0f);
+	pcl::PointXYZ z(0.0f, 0.0f, 5.0f);
 	for (int i = 0; i < cloud->points.size(); i++) {
 		pcl::PointXYZ point = cloud->at(i);
 		if (point.z < z.z) {
