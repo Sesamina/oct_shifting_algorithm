@@ -31,6 +31,7 @@ Eigen::Vector3f computeNeedleTranslation(float tangencyPoint, Eigen::Vector3f po
 	else if (pointOnOCTCloud.z() > tangencyPoint) {
 		translation -= direction * mult;
 	}
+	//has to be shifted by half model size because model centroid isn't at origin
 	translation -= (halfModelSize / direction.z()) * direction;
 	return translation;
 }
