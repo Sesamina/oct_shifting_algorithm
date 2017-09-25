@@ -4,53 +4,7 @@
 #include <pcl/sample_consensus/ransac.h>
 #include <pcl/sample_consensus/sac_model_line.h>
 
-double LinearRegression(std::vector<std::tuple<int, int>>& input)
-{
-	long i;
-	double a = 0.0;
-	double b = 0.0;
-	double sumX = 0.0; double sumY = 0.0; double sumXsquared = 0.0; double sumYsquared = 0.0; double sumXY = 0.0;
-	double coefD = 0.0; double coefC = 0.0; double stdError = 0.0;
-	long n = 0L;
-	std::vector<int> x;
-	std::vector<int> y;
-	for (int i = 0; i < input.size(); i++) {
-		x.push_back(std::get<0>(input.at(i)));
-		y.push_back(std::get<1>(input.at(i)));
-	}
-
-	if (input.size() > 0L) {// if size greater than zero there are data arrays
-		for (n = 0, i = 0L; i < input.size(); i++) {
-			n++;
-			sumX += x[i];
-			sumY += y[i];
-			sumXsquared += x[i] * x[i];
-			sumYsquared += y[i] * y[i];
-			sumXY += x[i] * y[i];
-			if (fabs(double(n) * sumXsquared - sumX * sumX) > DBL_EPSILON)
-			{
-				b = (double(n) * sumXY - sumY * sumX) /
-					(double(n) * sumXsquared - sumX * sumX);
-				a = (sumY - b * sumX) / double(n);
-
-				double sx = b * (sumXY - sumX * sumY / double(n));
-				double sy2 = sumYsquared - sumY * sumY / double(n);
-				double sy = sy2 - sx;
-
-				coefD = sx / sy2;
-				coefC = sqrt(coefD);
-				stdError = sqrt(sy / double(n - 2));
-			}
-			else
-			{
-				a = b = coefD = coefC = stdError = 0.0;
-			}
-		}
-	}
-	return stdError;
-}
-
-std::pair<Eigen::Vector3f, Eigen::Vector3f> fitLine(std::vector<Eigen::Vector3f>& points) {
+std::pair<Eigen::Vector3f, Eigen::Vector3f> fitLine(std::vector<Eigen::Vector3f> points) {
 	// copy coordinates to  matrix in Eigen format
 	size_t num_atoms = points.size();
 	Eigen::Matrix< Eigen::Vector3f::Scalar, Eigen::Dynamic, Eigen::Dynamic > centers(num_atoms, 3);
@@ -63,6 +17,20 @@ std::pair<Eigen::Vector3f, Eigen::Vector3f> fitLine(std::vector<Eigen::Vector3f>
 	Eigen::Vector3f axis = eig.eigenvectors().col(2).normalized();
 	//multiply with -1 so that it points towards origin
 	return std::make_pair(origin, axis * -1.0f);
+}
+
+double linearRegression(std::vector<std::tuple<int, int>> input) {
+	std::vector<Eigen::Vector3f> points;
+	for (int i = 0; i < input.size(); i++) {
+		points.push_back(Eigen::Vector3f(std::get<0>(input.at(i)), std::get<1>(input.at(i)), 0.0f));
+	}
+	std::pair<Eigen::Vector3f, Eigen::Vector3f> res = fitLine(points);
+	double errorSum = 0.0f;
+	for (int i = 0; i < points.size(); i++) {
+		errorSum += pcl::sqrPointToLineDistance(Eigen::Vector4f(points.at(i).x(), points.at(i).y(), points.at(i).z(), 0.0f),
+			Eigen::Vector4f(res.first.x(), res.first.y(), res.first.z(), 0.0f), Eigen::Vector4f(res.second.x(), res.second.y(), res.second.z(), 0.0f));
+	}
+	return errorSum;
 }
 
 std::vector<int> getInliers(pcl::PointCloud<pcl::PointXYZ>::Ptr& peak_points) {
@@ -80,7 +48,7 @@ std::vector<int> getInliers(pcl::PointCloud<pcl::PointXYZ>::Ptr& peak_points) {
 // y = m * x + t
 // when m is fixed
 // for the given input values
-double regress_t_with_fixed_m(std::vector<std::tuple<int, int>>& pos, double m)
+double regress_t_with_fixed_m(std::vector<std::tuple<int, int>> pos, double m)
 {
 	double n = pos.size();
 
@@ -99,14 +67,14 @@ double regress_t_with_fixed_m(std::vector<std::tuple<int, int>>& pos, double m)
 	return error / n;
 }
 
-double regress_split_at(std::vector<std::tuple<int, int>>& part_a, std::vector<std::tuple<int, int>>& part_b)
+double regress_split_at(std::vector<std::tuple<int, int>> part_a, std::vector<std::tuple<int, int>> part_b)
 {
-	double error_a = LinearRegression(part_a);
+	double error_a = linearRegression(part_a);
 	double error_b = regress_t_with_fixed_m(part_b, 0.0);
 	return error_a + error_b;
 }
 
-int regression(boost::shared_ptr<std::vector<std::tuple<int, int, cv::Mat, cv::Mat>>>& needle_width) {
+int regression(boost::shared_ptr<std::vector<std::tuple<int, int, cv::Mat, cv::Mat>>> needle_width) {
 	std::vector<std::tuple<int, int>> widths;
 	for (int i = 0; i < needle_width->size(); i++) {
 		widths.push_back(std::tuple<int, int>(std::get<0>(needle_width->at(i)), std::get<1>(needle_width->at(i))));
