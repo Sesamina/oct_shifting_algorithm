@@ -4,6 +4,10 @@
 #include <pcl/sample_consensus/ransac.h>
 #include <pcl/sample_consensus/sac_model_line.h>
 
+//------------------------------------------------------------------
+//fit a line through the given points
+//source: https://gist.github.com/ialhashim/0a2554076a6cf32831ca
+//------------------------------------------------------------------
 std::pair<Eigen::Vector3f, Eigen::Vector3f> fitLine(std::vector<Eigen::Vector3f> points) {
 	// copy coordinates to  matrix in Eigen format
 	size_t num_atoms = points.size();
@@ -19,6 +23,9 @@ std::pair<Eigen::Vector3f, Eigen::Vector3f> fitLine(std::vector<Eigen::Vector3f>
 	return std::make_pair(origin, axis * -1.0f);
 }
 
+//---------------------------------
+//linear regression for 2D points
+//---------------------------------
 double linearRegression(std::vector<std::tuple<int, int>> input) {
 	std::vector<Eigen::Vector3f> points;
 	for (int i = 0; i < input.size(); i++) {
@@ -33,6 +40,9 @@ double linearRegression(std::vector<std::tuple<int, int>> input) {
 	return errorSum;
 }
 
+//---------------------------------------------
+//use RANSAC to get inliers from given points
+//---------------------------------------------
 std::vector<int> getInliers(pcl::PointCloud<pcl::PointXYZ>::Ptr& peak_points) {
 	std::vector<int> inliers;
 	pcl::SampleConsensusModelLine<pcl::PointXYZ>::Ptr
@@ -67,6 +77,9 @@ double regress_t_with_fixed_m(std::vector<std::tuple<int, int>> pos, double m)
 	return error / n;
 }
 
+//-----------------------------------------------------------------------
+//helper method for summing up errors of different regression methods
+//-----------------------------------------------------------------------
 double regress_split_at(std::vector<std::tuple<int, int>> part_a, std::vector<std::tuple<int, int>> part_b)
 {
 	double error_a = linearRegression(part_a);
@@ -74,6 +87,9 @@ double regress_split_at(std::vector<std::tuple<int, int>> part_a, std::vector<st
 	return error_a + error_b;
 }
 
+//---------------------------------------------------------------
+//get the index of in z-direction where the needle tip has ended
+//---------------------------------------------------------------
 int regression(boost::shared_ptr<std::vector<std::tuple<int, int, cv::Mat, cv::Mat>>> needle_width) {
 	std::vector<std::tuple<int, int>> widths;
 	for (int i = 0; i < needle_width->size(); i++) {
