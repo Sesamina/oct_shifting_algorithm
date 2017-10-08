@@ -100,9 +100,8 @@ recognizeOCT(pcl::PointCloud<pcl::PointXYZ>::Ptr& point_cloud_ptr, pcl::PointClo
 
 	std::string oct_directory = getDirectoryPath(oct_dir);
 	//count oct images
-	int fileCount = countNumberOfFilesInDirectory(oct_directory, "%s*.bmp");
 	int minFrameNumber = 0;
-	int maxFrameNumber = fileCount;
+	int maxFrameNumber = NUM_FRAMES;
 
 	//tuple with frame number, bounding box width, filteredImage, labelInfo
 	boost::shared_ptr<std::vector<std::tuple<int, int, cv::Mat, cv::Mat>>> needle_width(new std::vector<std::tuple<int, int, cv::Mat, cv::Mat>>);
